@@ -1,15 +1,21 @@
 #include "opengl.h"
 #include "tetris_drawer.h"
+#include "Account.h"
+#include "donut.h"
 #include <iostream>
 #include <chrono>
 #include <ctime>
 #include <cstdlib>
+#include <iomanip>
+#include <fstream>
+#include <limits>
 using namespace std;
 
 int speed = 0;
 int cols = 0;
 int rows = 0;
 int score = 0;
+int erased = 0;
 int figure_x;
 int figure_y;
 int tetris_figure;
@@ -20,6 +26,14 @@ bool tetris_over = false;
 bool was_key = false;
 bool new_figure = false;
 bool use_effects = false;
+
+bool in_account = false;
+Account* acc_array = nullptr;
+Account curr_account;
+int num_accounts = 0;
+FILE* file;
+int this_id = -1;
+
 
 void tetrisDrawFigure(int x, int y, int figure, int rotation, int color) {
  tetrisDrawPixel(x, y, color);
@@ -69,7 +83,38 @@ void tetrisCheckFill() {
 
  if(fills_amount > 0) {
    score += score_divider[fills_amount - 1];
+   erased++;
    cout << "Score: " << score << endl;
+   curr_account.erased = erased;
+   curr_account.score = score;
+
+   fopen_s(&file, "data.bin", "wb");
+   if (file != nullptr) {
+    int new_num = num_accounts + 1;
+    fwrite(&new_num, sizeof(int), 1, file);
+
+    for (int i = -1; i < num_accounts; i++) {
+     Account this_acc;
+     if (i == -1) this_acc = curr_account;
+     else this_acc = acc_array[i];
+
+     int name_len = strlen(this_acc.name);
+     fwrite(&name_len, sizeof(int), 1, file);
+     fwrite(this_acc.name, sizeof(char), name_len, file);
+
+     int pass_len = strlen(this_acc.password);
+     fwrite(&pass_len, sizeof(int), 1, file);
+     fwrite(this_acc.password, sizeof(char), pass_len, file);
+
+     fwrite(&this_acc.score, sizeof(int), 1, file);
+     fwrite(&this_acc.erased, sizeof(int), 1, file);
+    }
+
+    fclose(file);
+   }
+
+   else cout << "Some errors occured durinc saving!";
+
   }
 }
 
@@ -80,8 +125,215 @@ void tetrisCheckOver() {
 
 
 int main() {
- using namespace chrono;
- srand(time(0));
+  using namespace chrono;
+  srand(time(0));
+
+  fopen_s(&file, "data.bin", "rb");
+  if(file != nullptr) {
+   fread(&num_accounts, sizeof(int), 1, file);
+   acc_array = new Account[num_accounts];
+
+   for(int i = 0; i < num_accounts; i ++) {
+    int name_len = 0;
+    fread(&name_len, sizeof(int), 1, file);
+    fread(acc_array[i].name, sizeof(char), name_len, file);
+    int pass_len = 0;
+    fread(&pass_len, sizeof(int), 1, file);
+    fread(acc_array[i].password, sizeof(char), pass_len, file);
+    fread(&acc_array[i].score, sizeof(int), 1, file);
+    fread(&acc_array[i].erased, sizeof(int), 1, file);
+   }
+   fclose(file);
+
+   for(int i = 0; i < num_accounts; i ++)
+       cout << num_accounts << " " << acc_array[i].name << " " << acc_array[i].password << " " << acc_array[i].score << " " << acc_array[i].erased << endl;
+  }
+
+  int input = 0;
+  while(input != 1 && input != 2) {
+   if (!in_account) {
+      cout << "<-----------Welcome------------>" << endl;
+      cout << "| 1 - " << "sign in" << "                  |" << endl;
+      cout << "| 2 - " << "sign up" << "                  |" << endl;
+      cout << "<------------------------------>" << endl;
+   }
+    cin >> input;
+    if (cin.fail()) {   
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    }
+    if (input != 1 && input != 2) cout << "Wrong number! Try again:" << endl;
+  }
+
+  if(input == 2) {
+   bool success = false;
+   cout << "Enter account name (unic ID, max 20 symbols):" << endl;
+   cin.ignore();
+   while (!success) {
+    cin.getline(curr_account.name, 20);
+
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+     cout << "Too long name or something wrong with symbols! Try again:" << endl;
+    }
+
+    else {
+     success = true;
+     for(int i = 0; i < num_accounts; i ++) {
+      if (strcmp(curr_account.name, acc_array[i].name) == 0) {
+        success = false;
+        cout << "We already have such an account! Try another name: " << endl;
+      }
+     }
+    }
+
+   }
+
+   success = false;
+   cout << "Enter account password (max 30 symbols):" << endl;
+   while (!success) {
+    cin.getline(curr_account.password, 30);
+
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+     cout << "Too long pass or something wrong with symbols! Try again:" << endl;
+    }
+    else success = true;
+   }
+
+   success = false;
+   cout << "Repeat your password:" << endl;
+   while (!success) {
+    Account buf;
+    cin.clear();
+    cin.getline(buf.password, 30);
+
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+     cout << "The password doesn`t match! Try again:" << endl;
+    }
+
+    else if (strcmp(buf.password, curr_account.password) != 0) {
+     cin.clear();
+     cout << "The password doesn`t match! Try again:" << endl;
+    }
+    
+    else success = true;
+   }
+
+   fopen_s(&file, "data.bin", "wb");
+   if (file != nullptr) {
+    int new_num = num_accounts + 1;
+    fwrite(&new_num, sizeof(int), 1, file);
+
+    for (int i = -1; i < num_accounts; i++) {
+     Account this_acc;
+     if (i == -1) this_acc = curr_account;
+     else this_acc = acc_array[i];
+
+     int name_len = strlen(this_acc.name);
+     fwrite(&name_len, sizeof(int), 1, file);
+     fwrite(this_acc.name, sizeof(char), name_len, file);
+
+     int pass_len = strlen(this_acc.password);
+     fwrite(&pass_len, sizeof(int), 1, file);
+     fwrite(this_acc.password, sizeof(char), pass_len, file);
+
+     fwrite(&this_acc.score, sizeof(int), 1, file);
+     fwrite(&this_acc.erased, sizeof(int), 1, file);
+    }
+
+    fclose(file);
+    cout << "Your account has been successfully created!" << endl;
+   }
+
+   else cout << "Some errors occured durinc account creation!";
+  }
+
+  if (input == 1) {
+   bool success = false;
+   this_id = -1;
+   cin.ignore();
+   cout << "Enter username:" << endl;
+   while (!success) {
+    cin.clear();
+    cin.getline(curr_account.name, 20);
+
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+     cout << "We don`t have such a username! Try again:" << endl;
+    }
+    else {
+     for(int i = 0; i < num_accounts; i ++) {
+      if (strcmp(curr_account.name, acc_array[i].name) == 0) {
+        cin.clear();
+        success = true;
+        this_id = i;
+      }
+     }
+     if (!success) {
+       cout << "We don`t have such a username! Try again:" << endl;
+     }
+    }
+   }
+
+   success = false;
+   int num_try = 0;
+   cout << "Enter password:" << endl;
+   while (!success) {
+    cin.clear();
+    cin.getline(curr_account.password, 30);
+
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+     cout << "Wrong password! Try again:" << endl;
+     num_try ++;
+    }
+    else {
+     if (strcmp(curr_account.password, acc_array[this_id].password) == 0) {
+      cin.clear();
+      success = true;
+     }
+     else {
+      cout << "Wrong password! Try again:" << endl;
+      num_try++;
+     }
+    }
+
+    if (num_try > 10) {
+     donut();
+    }
+   }
+  }
+
+  score = acc_array[this_id].score;
+   erased = acc_array[this_id].erased;
+
+ cout << "Logged in as: " << curr_account.name << endl;
+ cout << "Score: " << score << endl;
+ cout << "Erased: " << erased << endl;
+ input = 0;
+  while(input != 1 && input != 2) {
+   if (!in_account) {
+      cout << "<-----------Welcome------------>" << endl;
+      cout << "| 1 - " << "play" << "                  |" << endl;
+      cout << "<------------------------------>" << endl;
+   }
+    cin >> input;
+    if (cin.fail()) {
+     cin.clear();
+     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    }
+    if (input != 1 && input != 2) cout << "Wrong number! Try again:" << endl;
+  }
+
+
+if(input == 1) {
  while (1) {
   tetrisNewFigure();
   tetris_over = false;
@@ -208,6 +460,7 @@ int main() {
    cin.ignore();
    cin.get();
    system("cls");
+ }
  }
  return 0;
 }

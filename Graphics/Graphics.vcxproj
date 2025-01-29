@@ -142,6 +142,8 @@
     <ClCompile Include="tetris_drawer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Account.h" />
+    <ClInclude Include="donut.h" />
     <ClInclude Include="opengl.h" />
     <ClInclude Include="tetris_drawer.h" />
   </ItemGroup>
